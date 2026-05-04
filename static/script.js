@@ -12,7 +12,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const dropZone = document.getElementById('dropZone');
     const spinner = document.getElementById('spinner');
 
-    const allowedFileTypes = ['.txt', '.md', '.py', '.js', '.html', '.css', '.json', '.pdf'];
+    const allowedFileTypes = ['.txt', '.md', '.py', '.js', '.html', '.css', '.json', '.pdf', '.csv'];
 
     // Create loading overlay
     const loadingOverlay = document.createElement('div');
@@ -28,6 +28,47 @@ document.addEventListener('DOMContentLoaded', () => {
     // Function to show/hide spinner
     function setSpinner(isLoading) {
         spinner.style.display = isLoading ? 'block' : 'none';
+    }
+
+    function escapeHtml(value) {
+        return String(value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/\"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function renderFilePreview(content, csvData = null) {
+        if (csvData && Array.isArray(csvData.columns) && Array.isArray(csvData.rows)) {
+            const headerHtml = csvData.columns
+                .map((column) => `<th>${escapeHtml(column)}</th>`)
+                .join('');
+
+            const rowsHtml = csvData.rows
+                .map((row) => {
+                    const cells = csvData.columns
+                        .map((column) => `<td>${escapeHtml(row[column] || '')}</td>`)
+                        .join('');
+                    return `<tr>${cells}</tr>`;
+                })
+                .join('');
+
+            fileContent.classList.add('csv-view');
+            fileContent.innerHTML = `
+                <div class="csv-summary">Rows: ${csvData.row_count || 0} | Columns: ${csvData.column_count || 0}</div>
+                <div class="csv-table-wrap">
+                    <table class="csv-table">
+                        <thead><tr>${headerHtml}</tr></thead>
+                        <tbody>${rowsHtml}</tbody>
+                    </table>
+                </div>
+            `;
+            return;
+        }
+
+        fileContent.classList.remove('csv-view');
+        fileContent.textContent = content || '';
     }
 
     // Load chat history from local storage
@@ -100,9 +141,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await response.json();
             if (data.error) {
                 alert(`Error: ${data.error}`);
-                fileContent.textContent = '';
+                renderFilePreview('');
             } else {
-                fileContent.textContent = data.content;
+                renderFilePreview(data.content, data.csvData || null);
                 localStorage.setItem('fileContent', data.content); // Store file content in localStorage
                 if (data.chatHistory) {
                     updateChatHistory(data.chatHistory);
@@ -111,7 +152,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (error) {
             console.error('Error:', error);
             alert('An error occurred while uploading the file.');
-            fileContent.textContent = '';
+            renderFilePreview('');
         } finally {
             setLoading(false);
         }
@@ -127,13 +168,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             setSpinner(true);
+            const includeFile = document.getElementById('includeFileContext').checked;
             const response = await fetch('/chat', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
-                    message: message
+                    message: message,
+                    include_file: includeFile
                 }),
             });
             const data = await response.json();
@@ -213,7 +256,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function loadFileContent() {
         const savedFileContent = localStorage.getItem('fileContent');
         if (savedFileContent) {
-            fileContent.textContent = savedFileContent;
+            renderFilePreview(savedFileContent);
         }
     }
 
@@ -256,7 +299,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 throw new Error('Failed to clear all data');
             }
             chatHistory.innerHTML = '';
-            fileContent.textContent = '';
+            renderFilePreview('');
             localStorage.clear();
             // Force a hard reload of the page to clear any cached data
             window.location.reload(true);

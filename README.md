@@ -43,7 +43,7 @@ Chat-with-Notes is a simple web application built with Flask that allows users t
 
    ```
    python3 -m venv chat-with-notes-env
-   source chat-with-notes-env/bin/activate  # On Windows, use `chat-with-notes-env\Scripts\activate`
+   # source chat-with-notes-env/bin/activate  # On Windows, use #`chat-with-notes-env\Scripts\activate`
    ```
 
 3. **Install Dependencies**
@@ -78,7 +78,7 @@ Chat-with-Notes is a simple web application built with Flask that allows users t
 
 1. **Upload a Text File**
    - Use the file input to select and upload a text file.
-   - Supported file types include .txt, .md, .py, .js, .html, .css, .json, and .pdf
+   - Supported file types include .txt, .md, .py, .js, .html, .css, .json, .pdf, .csv
    - The content of the uploaded file will be displayed in a separate section.
 
 2. **Chat with the AI**
@@ -107,12 +107,4 @@ Chat-with-Notes is a simple web application built with Flask that allows users t
 
 - If you encounter issues with the AI responses, ensure that the Ollama Llama 3.1 model is running correctly on your local machine.
 - Check the console for any error messages if the application isn't behaving as expected.
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## License
-
-This project is licensed under the MIT License.
 
