@@ -63,7 +63,8 @@ def generate_response(prompt, conversation_history, file_content):
         full_prompt += f"\n\nUploaded file content:\n{file_content}"
     full_prompt += f"\n\nHuman: {prompt}\nAI:"
 
-    url = 'https://192.168.250.162:31262/v1/chat'
+    #url = 'https://192.168.250.162:31262/v1/chat'
+    url = 'http://192.168.250.100:11434/v1/chat/completions'
     headers = {'Content-Type': 'application/json'}
     data = {
         'messages': [
