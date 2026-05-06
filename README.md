@@ -42,7 +42,7 @@ Chat-with-Notes is a simple web application built with Flask that allows users t
 2. **Create and Activate Virtual Environment**
 
    ```
-   python3 -m venv chat-with-notes-env
+   python -m venv chat-with-notes-env
    # source chat-with-notes-env/bin/activate  # On Windows, use #`chat-with-notes-env\Scripts\activate`
    ```
 
@@ -52,14 +52,12 @@ Chat-with-Notes is a simple web application built with Flask that allows users t
    pip install -r requirements.txt
    ```
 
-4. **Set Up and Run Ollama Llama 3.1 Model**
+4. **Set Up and Run Ollama Model**
 
-   Make sure you have the Ollama Llama 3.1 model running locally. Follow the instructions on [Ollama's website](https://ollama.ai/) to set it up.
-
-   Start the Ollama Llama 3.1 model:
+   Start the Ollama model:
 
    ```
-   ollama run llama3.1
+   ollama run aiasistentworld/gemma-3-4b-it-cognitive-liberty
    ```
 
 ## Running the Application
