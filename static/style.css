@@ -1,8 +1,8 @@
 :root {
-    --red-900: #5f0f12;
-    --red-700: #9f1d22;
-    --red-600: #c9242a;
-    --red-500: #dd2a32;
+    --red-900: #bbf7d0;
+    --red-700: #bbf7d0;
+    --red-600: #bbf7d0;
+    --red-500: #bbf7d0;
     --cream-100: #fff9f6;
     --cream-200: #fff2ed;
     --ink-900: #1b1720;
@@ -47,7 +47,7 @@ body {
 .bg-glow-1 {
     width: 260px;
     height: 260px;
-    background: #ff6b5f;
+    background: #bbf7d0;
     left: -70px;
     top: -70px;
 }
@@ -55,7 +55,7 @@ body {
 .bg-glow-2 {
     width: 300px;
     height: 300px;
-    background: #ff8c80;
+    background: #bbf7d0;
     right: -120px;
     top: 220px;
 }
