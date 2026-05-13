@@ -1,12 +1,16 @@
 from flask import Flask, request, render_template, jsonify, session
 import csv
 import io
+import asyncio
+import json
 from itertools import zip_longest
 import os
 from threading import Lock
 from uuid import uuid4
 
 import pypdf
+import ollama
+from fastmcp import Client as MCPClient
 import requests
 import time
 import urllib3
@@ -16,6 +20,12 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24)  # For session management
+
+OLLAMA_MODEL = 'aratan/gemma-4-E4B-it-heretic:Q6_K'
+OLLAMA_HOST = 'http://localhost:11434'
+MCP_SERVER_URL = 'http://127.0.0.1:8080/mcp'
+
+ollama_client = ollama.Client(host=OLLAMA_HOST)
 
 session_store = {}
 session_store_lock = Lock()
@@ -43,7 +53,67 @@ def get_session_state():
         return state
 
 
-def generate_response(prompt, conversation_history, file_content):
+async def load_mcp_tools():
+    async with MCPClient(MCP_SERVER_URL) as mcp:
+        tools_list = await mcp.list_tools()
+
+    ollama_tools = []
+    for tool in tools_list:
+        ollama_tools.append({
+            'type': 'function',
+            'function': {
+                'name': tool.name,
+                'description': tool.description,
+                'parameters': tool.inputSchema,
+            },
+        })
+    print(f"[MCP] Loaded {len(ollama_tools)} tools from {MCP_SERVER_URL}")
+    return ollama_tools
+
+
+async def execute_tool(tool_name, arguments):
+    print(f"[MCP] Executing tool: {tool_name} with arguments: {arguments}")
+    async with MCPClient(MCP_SERVER_URL) as mcp:
+        result = await mcp.call_tool(tool_name, arguments)
+        print(f"[MCP] Tool result for {tool_name}: {result}")
+        return result
+
+
+def normalize_tool_result(result):
+    if isinstance(result, str):
+        return result
+
+    if isinstance(result, dict):
+        if 'content' in result:
+            content = result['content']
+            if isinstance(content, str):
+                return content
+            if isinstance(content, list):
+                return '\n'.join(
+                    item.get('text', str(item)) if isinstance(item, dict) else str(item)
+                    for item in content
+                )
+        if 'text' in result:
+            return str(result['text'])
+        return json.dumps(result)
+
+    if hasattr(result, 'content'):
+        content = getattr(result, 'content')
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            return '\n'.join(
+                item.get('text', str(item)) if isinstance(item, dict) else str(item)
+                for item in content
+            )
+
+    if hasattr(result, 'text'):
+        return str(getattr(result, 'text'))
+
+    return str(result)
+
+
+async def generate_response(prompt, conversation_history, file_content):
     recent_history = conversation_history[-6:] if len(conversation_history) > 6 else conversation_history
     formatted_history = "\n".join(recent_history)
 
@@ -59,27 +129,59 @@ def generate_response(prompt, conversation_history, file_content):
         full_prompt += f"\n\nUploaded file content:\n{file_content}"
     full_prompt += f"\n\nHuman: {prompt}\nAI:"
 
-    url = 'http://localhost:11434/v1/chat/completions'
-    headers = {'Content-Type': 'application/json'}
-    data = {
-        'messages': [
-            {'role': 'user', 'content': full_prompt}
-        ],
-        'model': 'aiasistentworld/gemma-3-4b-it-Cognitive-Liberty:latest',
-        'max_tokens': 700
-    }
-
     try:
+        tools = await load_mcp_tools()
+        messages = [{'role': 'user', 'content': full_prompt}]
+
         start = time.time()
-        response = requests.post(url, headers=headers, json=data, verify=False, timeout=120)
+        response = ollama_client.chat(
+            model=OLLAMA_MODEL,
+            messages=messages,
+            tools=tools,
+            stream=False,
+        )
         elapsed = time.time() - start
         print(f"[TIMING] Ollama request took {elapsed:.2f}s")
-        if response.status_code == 200:
-            response_data = response.json()
-            choice = response_data['choices'][0]
-            return choice.get('message', {}).get('content') or choice.get('text', '')
-        return f"Error: {response.status_code} - {response.text}"
+
+        message = response.get('message', {})
+        tool_calls = message.get('tool_calls') or []
+        if not tool_calls:
+            print("[MCP] Ollama returned a direct response with no tool calls")
+            return message.get('content', '')
+
+        messages.append(message)
+
+        for tool_call in tool_calls:
+            tool_name = tool_call['function']['name']
+            arguments = tool_call['function']['arguments']
+            if isinstance(arguments, str):
+                arguments = json.loads(arguments)
+
+            tool_result = await execute_tool(tool_name, arguments)
+            messages.append({
+                'role': 'tool',
+                'content': json.dumps(tool_result) if isinstance(tool_result, dict) else str(tool_result),
+            })
+
+        start_final = time.time()
+        final = ollama_client.chat(
+            model=OLLAMA_MODEL,
+            messages=messages,
+            stream=False,
+        )
+        elapsed_final = time.time() - start_final
+        print(f"[TIMING] Final Ollama request took {elapsed_final:.2f}s")
+        
+        final_message = final.get('message', {})
+        final_content = final_message.get('content', '')
+        print(f"[MCP] Final response: {final_content[:100] if final_content else '(empty)'}")
+        if not final_content:
+            print(f"[MCP] Full final response object: {final}")
+        return final_content
     except Exception as e:
+        print(f"[ERROR] Exception in generate_response: {type(e).__name__}: {e}")
+        import traceback
+        traceback.print_exc()
         return f"Error: {e}"
 
 
@@ -240,7 +342,7 @@ def chat():
         file_content = build_csv_context(csv_data)
 
     conversation_history.append(f"Human: {user_input}")
-    ai_response = generate_response(user_input, conversation_history, file_content)
+    ai_response = asyncio.run(generate_response(user_input, conversation_history, file_content))
     conversation_history.append(f"AI: {ai_response}")
     state['conversation_history'] = conversation_history
 

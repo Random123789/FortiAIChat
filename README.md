@@ -106,3 +106,42 @@ Chat-with-Notes is a simple web application built with Flask that allows users t
 - If you encounter issues with the AI responses, ensure that the Ollama Llama 3.1 model is running correctly on your local machine.
 - Check the console for any error messages if the application isn't behaving as expected.
 
+## MCP Verification
+
+Use these checks to confirm the chatbot is actually reaching the MCP server:
+
+### Good tool-test prompts
+
+Try these exact forms first:
+
+- `Greet John`
+- `Add 150 and 75`
+- `Multiply 6 by 7`
+- `What time is it?`
+- `Please greet John and then add 150 + 75`
+
+These are intentionally simple so Ollama is likely to choose the matching MCP tool.
+
+1. **Watch the Flask terminal**
+   - When you send a prompt that should use a tool, the server should print the Ollama timing line and then any tool-request lines.
+   - If nothing new appears in the terminal, Ollama likely answered directly instead of choosing a tool.
+
+2. **Try a tool-shaped prompt**
+   - Ask something that clearly maps to one of the MCP tools, for example:
+     - `Please greet John`
+     - `Add 150 and 75`
+     - `What time is it?`
+   - If the model decides to use MCP, the response should come back through the tool loop instead of a plain direct answer.
+
+3. **Check the MCP server terminal**
+   - The MCP server should show incoming tool calls when the chatbot uses a tool.
+   - If the Flask app responds but the MCP server stays silent, the issue is usually the MCP connection or tool discovery step.
+
+4. **Use a failure test**
+   - Stop the MCP server and send a tool-shaped prompt.
+   - The chatbot should then return an error about connecting to the MCP server, which confirms that the client really depends on MCP for that request.
+
+5. **Use a direct comparison**
+   - Run `client_ollama.py` with the same prompt.
+   - If the standalone client hits MCP but the web app does not, the issue is in the Flask chat flow rather than the MCP server itself.
+
