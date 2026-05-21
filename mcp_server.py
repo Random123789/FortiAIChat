@@ -1,6 +1,7 @@
 import os
 import requests
 from dotenv import load_dotenv
+import time
 # mcp_server.py
 from fastmcp import FastMCP
 
@@ -143,6 +144,198 @@ def fortimanager_get_system_status() -> dict:
             "verbose": 1,
             "id": 2
         })
+    finally:
+        fmg_logout(session)
+
+@mcp.tool()
+def fortimanager_get_managed_FortiGate() -> dict:
+    """Get managed FortiGate information from FortiManager"""
+    session = fmg_login()
+    try:
+        return fmg_rpc({
+            "method": "get",
+            "params": [
+                {
+                    "fields": [
+                        "name",
+                        "sn",
+                        "ip"
+                    ],
+                    "option": [
+                        "no loadsub"
+                    ],
+                    "url": "/dvmdb/adom/adom74/device"
+                }
+            ],
+            "session": session,
+            "verbose": 1,
+            "id": 3
+        })
+    finally:
+        fmg_logout(session)
+
+@mcp.tool()
+def fortimanager_get_policy_packages() -> dict:
+    """Get policy package from FortiManager"""
+    session = fmg_login()
+    try:
+        return fmg_rpc({
+            "method": "get",
+            "params": [
+                {
+                    "url": "/pm/pkg/adom/FortiSASE"
+                }
+            ],
+            "session": session,
+            "verbose": 1,
+            "id": 4
+        })
+    finally:
+        fmg_logout(session)
+
+@mcp.tool()
+def fortimanager_get_IPS_signatures() -> dict:
+    """Get IPS signatures from FortiManager"""
+    session = fmg_login()
+    try:
+        raw = fmg_rpc({
+            "method": "get",
+            "params": [
+                {
+                    "url": "/um/object/list"
+                }
+            ],
+            "session": session,
+            "verbose": 1,
+            "id": 5
+        })
+
+        result = raw.get("result") or [{}]
+        first_result = result[0]
+
+        object_list = (
+            first_result.get("data", {}).get("object_list", {})
+        )
+
+        matches = []
+
+        for category, objects in object_list.items():
+            for objid, obj in objects.items():
+                obj_desc = obj.get("obj_desc", "")
+
+                searchable_text = f"{category} {objid} {obj_desc}".lower()
+
+                if "ips" in searchable_text:
+                    matches.append({
+                        "id": objid,
+                        "description": obj_desc,
+                    })
+        
+        return {
+            "data": matches
+        }
+
+    finally:
+        fmg_logout(session)
+
+@mcp.tool()
+def fortimanager_get_fortigate_ips_version() -> dict:
+    """Get FortiGate IPS version from FortiManager"""
+    session = fmg_login()
+    try:
+        fmg_rpc({
+            "method": "exec",
+            "params": [
+                {
+                    "data": {
+                        "adom": "adom74",
+                        "scope": [
+                            {
+                                "name": "ftntsgse-wanfw",
+                                "vdom": "global"
+                            }
+                        ],
+                        "script": "check ips"
+                    },
+                    "url": "/dvmdb/adom/adom74/script/execute"
+                }
+            ],
+            "session": session,
+            "verbose": 1,
+            "id": 6
+        })
+
+        time.sleep(60)
+
+        return fmg_rpc({
+            "method": "get",
+            "params": [
+                {
+                    "url": "/dvmdb/adom/adom74/script/log/latest/device/ftntsgse-wanfw"
+                }
+            ],
+            "session": session,
+            "verbose": 1,
+            "id": 7
+        })
+
+    finally:
+        fmg_logout(session)
+
+@mcp.tool()
+def fortimanager_get_fortigate_ips_license() -> dict:
+    """Get FortiGate IPS license information from FortiManager"""
+
+    def find_key_recursive(obj, target_key):
+        if isinstance(obj, dict):
+            if target_key in obj:
+                return obj[target_key]
+            
+            for value in obj.values():
+                found = find_key_recursive(value, target_key)
+                if found is not None:
+                    return found
+
+        elif isinstance(obj, list):
+            for item in obj:
+                found = find_key_recursive(item, target_key)
+                if found is not None:
+                    return found
+            
+        return None
+
+    session = fmg_login()
+    try:
+        resp = fmg_rpc({
+            "method": "exec",
+            "params": [
+                {
+                    "data": {
+                        "action": "get",
+                        "resource": "/api/v2/monitor/license/status",
+                        "target": "adom/adom74/device/ftntsgse-wanfw"
+                    },
+                    "url": "sys/proxy/json"
+                }
+            ],
+            "session": session,
+            "verbose": 1,
+            "id": 8
+        })
+
+        ips = find_key_recursive(resp, "ips")
+
+        if ips is None:
+            return {
+                "ok": False,
+                "error": "Could not find IPS license information in response"
+            }
+
+        return {
+            "ok": True,
+            "ips": ips
+        }
+
     finally:
         fmg_logout(session)
 
