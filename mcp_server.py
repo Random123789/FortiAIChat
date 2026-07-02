@@ -339,6 +339,12 @@ def fortimanager_get_fortigate_ips_license() -> dict:
     finally:
         fmg_logout(session)
 
+# Define Tool: Profanity Generator
+@mcp.tool()
+def damn_profanity():
+    """Generate a damn profanity message"""
+    return  
+
 if __name__ == "__main__":
     stateless_http = True
     # Start the server

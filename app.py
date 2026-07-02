@@ -9,7 +9,6 @@ from threading import Lock
 from uuid import uuid4
 
 import pypdf
-import ollama
 from fastmcp import Client as MCPClient
 import requests
 import time
@@ -21,11 +20,11 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 app = Flask(__name__)
 app.secret_key = os.urandom(24)  # For session management
 
-OLLAMA_MODEL = 'aratan/gemma-4-E4B-it-heretic:Q6_K'
-OLLAMA_HOST = 'http://localhost:11434'
+MODEL_NAME = 'aratan/gemma-4-E4B-it-heretic:Q6_K'
+MODEL_CHAT_URL = 'https://192.168.250.162:31262/v1/chat'
 MCP_SERVER_URL = 'http://127.0.0.1:8080/mcp'
 
-ollama_client = ollama.Client(host=OLLAMA_HOST)
+MODEL_REQUEST_TIMEOUT = 1000
 
 session_store = {}
 session_store_lock = Lock()
@@ -77,6 +76,46 @@ async def execute_tool(tool_name, arguments):
         result = await mcp.call_tool(tool_name, arguments)
         print(f"[MCP] Tool result for {tool_name}: {result}")
         return result
+
+
+def call_model(messages, tools=None):
+    payload = {
+        'model': MODEL_NAME,
+        'messages': messages,
+        'stream': False,
+    }
+    if tools:
+        payload['tools'] = tools
+
+    response = requests.post(
+        MODEL_CHAT_URL,
+        json=payload,
+        verify=False,
+        timeout=MODEL_REQUEST_TIMEOUT,
+    )
+    response.raise_for_status()
+    return response.json()
+
+
+def extract_model_message(response_data):
+    if not isinstance(response_data, dict):
+        return {}, []
+
+    if 'message' in response_data and isinstance(response_data['message'], dict):
+        message = response_data['message']
+        return message, message.get('tool_calls') or []
+
+    choices = response_data.get('choices') or []
+    if choices:
+        message = choices[0].get('message') or {}
+        return message, message.get('tool_calls') or []
+
+    message = {}
+    if 'content' in response_data:
+        message['content'] = response_data.get('content', '')
+    if 'tool_calls' in response_data:
+        message['tool_calls'] = response_data.get('tool_calls') or []
+    return message, message.get('tool_calls') or []
 
 
 def normalize_tool_result(result):
@@ -134,17 +173,11 @@ async def generate_response(prompt, conversation_history, file_content):
         messages = [{'role': 'user', 'content': full_prompt}]
 
         start = time.time()
-        response = ollama_client.chat(
-            model=OLLAMA_MODEL,
-            messages=messages,
-            tools=tools,
-            stream=False,
-        )
+        response = call_model(messages, tools=tools)
         elapsed = time.time() - start
-        print(f"[TIMING] Ollama request took {elapsed:.2f}s")
+        print(f"[TIMING] Model request took {elapsed:.2f}s")
 
-        message = response.get('message', {})
-        tool_calls = message.get('tool_calls') or []
+        message, tool_calls = extract_model_message(response)
         if not tool_calls:
             print("[MCP] Ollama returned a direct response with no tool calls")
             return message.get('content', '')
@@ -152,27 +185,37 @@ async def generate_response(prompt, conversation_history, file_content):
         messages.append(message)
 
         for tool_call in tool_calls:
-            tool_name = tool_call['function']['name']
-            arguments = tool_call['function']['arguments']
+            function_data = tool_call.get('function', {}) if isinstance(tool_call, dict) else {}
+            tool_name = function_data.get('name')
+            arguments = function_data.get('arguments', {})
             if isinstance(arguments, str):
                 arguments = json.loads(arguments)
 
             tool_result = await execute_tool(tool_name, arguments)
-            messages.append({
+            normalized_tool_result = normalize_tool_result(tool_result)
+            tool_message = {
                 'role': 'tool',
-                'content': json.dumps(tool_result) if isinstance(tool_result, dict) else str(tool_result),
-            })
+                'content': normalized_tool_result,
+            }
+            if isinstance(tool_call, dict) and tool_call.get('id'):
+                tool_message['tool_call_id'] = tool_call['id']
+            messages.append(tool_message)
+
+        messages.append({
+            'role': 'user',
+            'content': (
+                f"Original user prompt: {prompt}\n\n"
+                "Use the tool response above to answer the original prompt. "
+                "Format the final answer clearly and base it on the tool result."
+            ),
+        })
 
         start_final = time.time()
-        final = ollama_client.chat(
-            model=OLLAMA_MODEL,
-            messages=messages,
-            stream=False,
-        )
+        final = call_model(messages)
         elapsed_final = time.time() - start_final
-        print(f"[TIMING] Final Ollama request took {elapsed_final:.2f}s")
+        print(f"[TIMING] Final model request took {elapsed_final:.2f}s")
         
-        final_message = final.get('message', {})
+        final_message, _ = extract_model_message(final)
         final_content = final_message.get('content', '')
         print(f"[MCP] Final response: {final_content[:100] if final_content else '(empty)'}")
         if not final_content:
