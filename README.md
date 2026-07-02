@@ -12,7 +12,7 @@ https://github.com/user-attachments/assets/98efedad-1651-4a5c-ac79-a66b6deef98c
 
 # Chat-with-Notes
 
-Chat-with-Notes is a simple web application built with Flask that allows users to upload text files, display their content, and interact with an AI chatbot to discuss the content. The application uses a locally running Ollama Llama 3.1 (8B) model for AI responses, ensuring privacy and data security.
+Chat-with-Notes is a simple web application built with Flask that allows users to upload text files, display their content, and interact with an AI chatbot to discuss the content. The application uses a locally running Ollama model for AI responses, ensuring privacy and data security.
 
 ## Features
 
@@ -28,7 +28,7 @@ Chat-with-Notes is a simple web application built with Flask that allows users t
 - Python 3.x
 - pip (Python package installer)
 - Git
-- Ollama with Llama 3.1 (8B) model running locally
+- Ollama running locally with the model you want to use
 
 ## Installation
 
@@ -52,12 +52,18 @@ Chat-with-Notes is a simple web application built with Flask that allows users t
    pip install -r requirements.txt
    ```
 
-4. **Set Up and Run Ollama Model**
+4. **Set Up and Run Ollama**
 
-   Start the Ollama model:
+   Start the Ollama server:
 
    ```
-   ollama run aiasistentworld/gemma-3-4b-it-cognitive-liberty
+   ollama serve
+   ```
+
+   Pull the model once if needed:
+
+   ```
+   ollama pull aiasistentworld/gemma-3-4b-it-cognitive-liberty:latest
    ```
 
 ## Running the Application
@@ -103,6 +109,6 @@ Chat-with-Notes is a simple web application built with Flask that allows users t
 
 ## Troubleshooting
 
-- If you encounter issues with the AI responses, ensure that the Ollama Llama 3.1 model is running correctly on your local machine.
+- If you encounter issues with the AI responses, ensure that Ollama is running and the configured model has been pulled locally.
 - Check the console for any error messages if the application isn't behaving as expected.
 

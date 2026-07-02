@@ -5,6 +5,7 @@ from itertools import zip_longest
 import os
 from threading import Lock
 from uuid import uuid4
+from urllib.parse import urlsplit, urlunsplit
 
 import pypdf
 import requests
@@ -16,6 +17,29 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24)  # For session management
+
+
+def normalize_ollama_host(raw_host):
+    host = (raw_host or '').strip().rstrip('/')
+    if not host:
+        return 'http://127.0.0.1:11434'
+
+    if '://' not in host:
+        host = f'http://{host}'
+
+    parts = urlsplit(host)
+    netloc = parts.netloc or '127.0.0.1:11434'
+    if netloc.startswith('0.0.0.0'):
+        netloc = netloc.replace('0.0.0.0', '127.0.0.1', 1)
+
+    return urlunsplit((parts.scheme or 'http', netloc, parts.path, parts.query, parts.fragment)).rstrip('/')
+
+
+OLLAMA_HOST = normalize_ollama_host(os.environ.get('OLLAMA_HOST', 'http://127.0.0.1:11434'))
+OLLAMA_MODEL = os.environ.get(
+    'OLLAMA_MODEL',
+    'aiasistentworld/gemma-3-4b-it-cognitive-liberty:latest'
+)
 
 session_store = {}
 session_store_lock = Lock()
@@ -59,24 +83,30 @@ def generate_response(prompt, conversation_history, file_content):
         full_prompt += f"\n\nUploaded file content:\n{file_content}"
     full_prompt += f"\n\nHuman: {prompt}\nAI:"
 
-    url = 'http://localhost:11434/v1/chat/completions'
-    headers = {'Content-Type': 'application/json'}
+    url = f'{OLLAMA_HOST}/api/chat'
     data = {
+        'model': OLLAMA_MODEL,
         'messages': [
+            {'role': 'system', 'content': assistant_rules},
             {'role': 'user', 'content': full_prompt}
         ],
-        'model': 'aiasistentworld/gemma-3-4b-it-Cognitive-Liberty:latest',
-        'max_tokens': 700
+        'stream': False,
+        'options': {
+            'num_predict': 700
+        }
     }
 
     try:
         start = time.time()
-        response = requests.post(url, headers=headers, json=data, verify=False, timeout=120)
+        response = requests.post(url, json=data, timeout=120)
         elapsed = time.time() - start
         print(f"[TIMING] Ollama request took {elapsed:.2f}s")
         if response.status_code == 200:
             response_data = response.json()
-            choice = response_data['choices'][0]
+            message = response_data.get('message', {})
+            if message:
+                return message.get('content', '')
+            choice = response_data.get('choices', [{}])[0]
             return choice.get('message', {}).get('content') or choice.get('text', '')
         return f"Error: {response.status_code} - {response.text}"
     except Exception as e:
